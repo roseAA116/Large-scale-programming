@@ -4,15 +4,15 @@
 
 ## 阶段 1：项目基础骨架
 
-- [ ] 初始化前端项目：React + TypeScript + Vite
-- [ ] 初始化后端项目：FastAPI + SQLAlchemy + Alembic
-- [ ] 配置 PostgreSQL、Redis、对象存储 MinIO/S3
-- [ ] 设计统一 API 响应结构
-- [ ] 实现全局错误处理、错误码、trace_id
-- [ ] 实现结构化日志系统
-- [ ] 搭建 Docker Compose 开发环境
-- [ ] 建立前后端基础目录结构
-- [ ] 建立配置管理与环境变量加载机制
+- [x] 初始化前端项目：React + TypeScript + Vite
+- [x] 初始化后端项目：FastAPI + SQLAlchemy + Alembic
+- [x] 配置 PostgreSQL、Redis、对象存储 MinIO/S3
+- [x] 设计统一 API 响应结构
+- [x] 实现全局错误处理、错误码、trace_id
+- [x] 实现结构化日志系统
+- [x] 搭建 Docker Compose 开发环境
+- [x] 建立前后端基础目录结构
+- [x] 建立配置管理与环境变量加载机制
 
 ## 阶段 2：用户与权限
 
