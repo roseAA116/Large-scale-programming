@@ -2,6 +2,8 @@ services:
   frontend:
     build:
       context: ./frontend
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8000
     ports:
       - "5173:5173"
     volumes:
@@ -16,6 +18,10 @@ services:
       context: ./backend
     env_file:
       - ./backend/.env.example
+    environment:
+      COURSE_AGENT_DATABASE_URL: postgresql+asyncpg://course_agent:course_agent@postgres:5432/course_agent
+      COURSE_AGENT_REDIS_URL: redis://redis:6379/0
+      COURSE_AGENT_S3_ENDPOINT: minio:9000
     ports:
       - "8000:8000"
     depends_on:

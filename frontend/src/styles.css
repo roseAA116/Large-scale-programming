@@ -27,6 +27,8 @@ a {
 }
 
 .sidebar {
+  display: flex;
+  flex-direction: column;
   background: #18202f;
   color: #f8fbff;
   padding: 24px 18px;
@@ -87,6 +89,41 @@ a {
 .nav-item:hover {
   background: #253147;
   color: #ffffff;
+}
+
+.nav-item.pending {
+  opacity: 0.72;
+}
+
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+.sidebar-footer strong,
+.sidebar-footer span {
+  display: block;
+}
+
+.sidebar-footer strong {
+  max-width: 148px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-footer span {
+  max-width: 148px;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #aab7c8;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .content {
@@ -223,6 +260,177 @@ pre {
   line-height: 1.6;
 }
 
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #33415b;
+  border-radius: 8px;
+  background: #253147;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: #31405d;
+}
+
+.auth-screen {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.auth-panel {
+  width: min(100%, 430px);
+  padding: 28px;
+  border: 1px solid #dce4ee;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.auth-brand h1,
+.profile-summary h3 {
+  margin: 0;
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+.form label {
+  display: grid;
+  gap: 8px;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.form input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cdd7e4;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #18202f;
+  font: inherit;
+  font-weight: 400;
+}
+
+.form input:focus {
+  border-color: #157f73;
+  box-shadow: 0 0 0 3px rgba(49, 198, 165, 0.18);
+  outline: none;
+}
+
+.form input:disabled {
+  background: #eef3f8;
+  color: #64748b;
+}
+
+.form-body {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 16px;
+  background: #157f73;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+}
+
+.primary-button:hover {
+  background: #10665d;
+}
+
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
+.form-error,
+.form-success,
+.auth-switch,
+.profile-summary p {
+  margin: 0;
+}
+
+.form-error {
+  color: #b42318;
+  font-size: 14px;
+}
+
+.form-success {
+  color: #11745f;
+  font-size: 14px;
+}
+
+.auth-switch {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 18px;
+  color: #5a6b80;
+  font-size: 14px;
+}
+
+.auth-switch a {
+  color: #157f73;
+  font-weight: 800;
+}
+
+.profile-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 560px);
+  gap: 18px;
+  align-items: start;
+}
+
+.profile-summary {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid #dce4ee;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.profile-summary svg {
+  color: #157f73;
+}
+
+.profile-summary p {
+  margin-top: 6px;
+  color: #5a6b80;
+  overflow-wrap: anywhere;
+}
+
+.profile-form {
+  margin: 0;
+}
+
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -233,11 +441,15 @@ pre {
   }
 
   .nav-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .nav-item {
     justify-content: center;
+  }
+
+  .sidebar-footer {
+    margin-top: 18px;
   }
 
   .content {
@@ -250,8 +462,23 @@ pre {
   }
 
   .overview,
-  .module-grid {
+  .module-grid,
+  .profile-layout {
     grid-template-columns: 1fr;
+  }
+
+  .panel-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
+@media (max-width: 520px) {
+  .nav-list {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-panel {
+    padding: 22px;
+  }
+}
