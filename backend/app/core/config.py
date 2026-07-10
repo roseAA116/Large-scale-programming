@@ -22,6 +22,17 @@ class Settings(BaseSettings):
     s3_bucket: str = "course-materials"
     s3_secure: bool = False
 
+    embedding_api_url: str | None = None
+    embedding_api_key: str | None = None
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimension: int = 1536
+    embedding_batch_size: int = 32
+
+    worker_queue_name: str = "course_agent:jobs"
+    worker_retry_queue_name: str = "course_agent:jobs:retry"
+    worker_max_retries: int = 3
+    worker_poll_timeout_seconds: int = 5
+
     allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     log_level: str = "INFO"
 

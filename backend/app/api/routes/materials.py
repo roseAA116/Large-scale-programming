@@ -14,6 +14,7 @@ from app.core.responses import ok
 from app.models import Course, Material, MaterialStatus
 from app.schemas import MaterialRead
 from app.services.storage import delete_material_object, put_material_object
+from app.services.task_queue import enqueue_parse_material
 
 router = APIRouter(tags=["materials"])
 logger = get_logger(__name__)
@@ -261,6 +262,7 @@ def _build_object_key(
 
 
 def _enqueue_parse_material(material_id: str) -> None:
+    enqueue_parse_material(material_id)
     logger.info("parse_material_task_enqueued", extra={"material_id": material_id})
 
 
