@@ -1,6 +1,6 @@
 # Course Agent Backend
 
-这是课程学习助手 Agent 平台的 Python 后端基础骨架，当前覆盖阶段一的后端地基：
+这是课程学习助手 Agent 平台的 Python 后端，当前覆盖阶段一基础地基和阶段二用户与权限：
 
 - FastAPI 应用入口
 - 统一 API 响应结构
@@ -11,6 +11,12 @@
 - PostgreSQL / Redis / MinIO 连接占位
 - Alembic 数据库迁移骨架
 - 健康检查接口
+- 用户注册、登录、退出登录接口
+- 密码哈希与密码校验
+- JWT 签发、解析、过期校验和退出后失效
+- 当前用户信息接口
+- 个人资料查看与修改
+- 用户数据隔离校验辅助函数
 
 ## 本地启动
 
@@ -25,18 +31,34 @@ copy .env.example .env
 uvicorn app.main:app --reload
 ```
 
+首次启动数据库后执行迁移：
+
+```powershell
+alembic upgrade head
+```
+
 启动后可访问：
 
 - `http://127.0.0.1:8000/api/v1/healthz`
 - `http://127.0.0.1:8000/api/v1/readyz`
 - `http://127.0.0.1:8000/docs`
 
+认证相关接口：
+
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/users/me`
+- `PATCH /api/v1/users/me`
+
 ## Docker Compose
 
 在项目根目录运行：
 
 ```powershell
-docker compose up --build
+docker compose up -d --build
+docker compose exec api alembic upgrade head
 ```
 
 服务端口：
@@ -55,10 +77,9 @@ backend/
     api/        HTTP 路由
     core/       配置、日志、响应、错误、中间件
     db/         数据库连接与 ORM 基类
-    models/     后续业务模型
-    schemas/    后续请求/响应结构
+    models/     SQLAlchemy 模型
+    schemas/    请求/响应结构
     services/   缓存、对象存储等服务封装
   migrations/   Alembic 迁移目录
   tests/        基础测试
 ```
-

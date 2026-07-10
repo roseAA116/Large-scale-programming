@@ -25,6 +25,17 @@ export type AuthSession = {
   user: User;
 };
 
+export type Course = {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  teacher: string | null;
+  semester: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type HealthData = {
   status: string;
   service: string;
@@ -45,6 +56,13 @@ type LoginPayload = {
 type ProfileUpdatePayload = {
   username?: string;
   full_name?: string;
+};
+
+export type CoursePayload = {
+  name: string;
+  description?: string | null;
+  teacher?: string | null;
+  semester?: string | null;
 };
 
 export class ApiError extends Error {
@@ -102,6 +120,36 @@ export async function updateProfile(payload: ProfileUpdatePayload): Promise<User
     method: "PATCH"
   });
   return response.data;
+}
+
+export async function listCourses(keyword?: string): Promise<Course[]> {
+  const searchParams = new URLSearchParams();
+  if (keyword?.trim()) {
+    searchParams.set("keyword", keyword.trim());
+  }
+  const queryString = searchParams.toString();
+  const response = await apiFetch<Course[]>(`/api/v1/courses${queryString ? `?${queryString}` : ""}`);
+  return response.data;
+}
+
+export async function createCourse(payload: CoursePayload): Promise<Course> {
+  const response = await apiFetch<Course>("/api/v1/courses", {
+    body: payload,
+    method: "POST"
+  });
+  return response.data;
+}
+
+export async function updateCourse(courseId: string, payload: CoursePayload): Promise<Course> {
+  const response = await apiFetch<Course>(`/api/v1/courses/${courseId}`, {
+    body: payload,
+    method: "PATCH"
+  });
+  return response.data;
+}
+
+export async function deleteCourse(courseId: string): Promise<void> {
+  await apiFetch<{ message: string }>(`/api/v1/courses/${courseId}`, { method: "DELETE" });
 }
 
 async function apiFetch<T>(
