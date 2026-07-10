@@ -1,4 +1,4 @@
-import { LogOut, UserRound, BookOpen, FileText, LayoutDashboard } from "lucide-react";
+import { BookOpen, FileText, LayoutDashboard, LogOut, UserRound } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { logout } from "../api/client";
@@ -34,7 +34,10 @@ export function AppLayout() {
             <LayoutDashboard size={18} />
             工作台
           </NavLink>
-          <NavLink className="nav-item pending" to="/">
+          <NavLink
+            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+            to="/courses"
+          >
             <BookOpen size={18} />
             课程
           </NavLink>
