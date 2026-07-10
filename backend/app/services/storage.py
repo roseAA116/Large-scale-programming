@@ -68,6 +68,29 @@ def delete_material_object(object_key: str) -> None:
         ) from exc
 
 
+def download_material_object(*, object_key: str, destination_path: str) -> str:
+    client = get_storage_client()
+    ensure_bucket(client)
+    response = None
+    try:
+        response = client.get_object(settings.s3_bucket, object_key)
+        with open(destination_path, "wb") as file:
+            for chunk in response.stream(32 * 1024):
+                file.write(chunk)
+    except S3Error as exc:
+        raise AppError(
+            "PARSE_FILE_NOT_FOUND",
+            "Material object could not be downloaded.",
+            status_code=404,
+            details={"object_key": object_key},
+        ) from exc
+    finally:
+        if response is not None:
+            response.close()
+            response.release_conn()
+    return destination_path
+
+
 def storage_settings_ready() -> dict:
     missing = [
         name

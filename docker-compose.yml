@@ -32,6 +32,23 @@ services:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+  worker:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env.example
+    environment:
+      COURSE_AGENT_DATABASE_URL: postgresql+asyncpg://course_agent:course_agent@postgres:5432/course_agent
+      COURSE_AGENT_REDIS_URL: redis://redis:6379/0
+      COURSE_AGENT_S3_ENDPOINT: minio:9000
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    volumes:
+      - ./backend:/app
+    command: python -m app.worker
+
   postgres:
     image: pgvector/pgvector:pg16
     environment:
