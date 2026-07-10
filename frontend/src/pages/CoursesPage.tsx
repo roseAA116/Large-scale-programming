@@ -1,15 +1,20 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Edit3, Plus, Search, Trash2, X } from "lucide-react";
+import { BookOpen, Edit3, FileText, Plus, Search, Trash2, UploadCloud, X } from "lucide-react";
 
 import {
   ApiError,
   Course,
   CoursePayload,
+  Material,
+  MaterialStatus,
   createCourse,
   deleteCourse,
+  deleteMaterial,
+  listMaterials,
   listCourses,
-  updateCourse
+  updateCourse,
+  uploadMaterial
 } from "../api/client";
 
 type CourseFormState = {
@@ -42,6 +47,34 @@ function toPayload(form: CourseFormState): CoursePayload {
     teacher: form.teacher || null,
     semester: form.semester || null
   };
+}
+
+const materialStatusLabels: Record<MaterialStatus, string> = {
+  UPLOADED: "已上传",
+  PARSING: "解析中",
+  PARSED: "已解析",
+  INDEXING: "索引中",
+  READY: "可使用",
+  FAILED: "失败"
+};
+
+const materialTypeLabels: Record<string, string> = {
+  pdf: "PDF",
+  docx: "DOCX",
+  pptx: "PPTX",
+  txt: "TXT",
+  md: "Markdown",
+  image: "图片"
+};
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function CoursesPage() {
@@ -191,25 +224,28 @@ export function CoursesPage() {
         <section className="course-list" aria-label="课程列表">
           {courses.map((course) => (
             <article className="course-item" key={course.id}>
-              <div className="course-main">
-                <BookOpen size={22} />
-                <div>
-                  <h3>{course.name}</h3>
-                  <p>{course.description || "暂无课程简介"}</p>
-                  <div className="course-meta">
-                    <span>{course.teacher || "未填写教师"}</span>
-                    <span>{course.semester || "未填写学期"}</span>
+              <div className="course-row">
+                <div className="course-main">
+                  <BookOpen size={22} />
+                  <div>
+                    <h3>{course.name}</h3>
+                    <p>{course.description || "暂无课程简介"}</p>
+                    <div className="course-meta">
+                      <span>{course.teacher || "未填写教师"}</span>
+                      <span>{course.semester || "未填写学期"}</span>
+                    </div>
                   </div>
                 </div>
+                <div className="course-actions">
+                  <button className="icon-button light" type="button" onClick={() => openEditForm(course)} aria-label="编辑课程">
+                    <Edit3 size={17} />
+                  </button>
+                  <button className="icon-button danger" type="button" onClick={() => setDeletingCourse(course)} aria-label="删除课程">
+                    <Trash2 size={17} />
+                  </button>
+                </div>
               </div>
-              <div className="course-actions">
-                <button className="icon-button light" type="button" onClick={() => openEditForm(course)} aria-label="编辑课程">
-                  <Edit3 size={17} />
-                </button>
-                <button className="icon-button danger" type="button" onClick={() => setDeletingCourse(course)} aria-label="删除课程">
-                  <Trash2 size={17} />
-                </button>
-              </div>
+              <CourseMaterials courseId={course.id} />
             </article>
           ))}
         </section>
@@ -291,5 +327,162 @@ export function CoursesPage() {
         </div>
       )}
     </>
+  );
+}
+
+function CourseMaterials({ courseId }: { courseId: string }) {
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [title, setTitle] = useState("");
+  const [materialType, setMaterialType] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const materialsQuery = useQuery({
+    queryKey: ["materials", courseId],
+    queryFn: () => listMaterials(courseId),
+    retry: 1
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedFile) {
+        throw new ApiError("请选择要上传的资料", "MATERIAL_FILE_REQUIRED", 400);
+      }
+      return uploadMaterial(courseId, {
+        file: selectedFile,
+        title,
+        material_type: materialType,
+        onProgress: setUploadProgress
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["materials", courseId] });
+      setSelectedFile(null);
+      setTitle("");
+      setMaterialType("");
+      setUploadProgress(0);
+      setUploadError(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteMaterial,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["materials", courseId] });
+      setDeleteError(null);
+    }
+  });
+
+  async function handleUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setUploadError(null);
+    setUploadProgress(0);
+    try {
+      await uploadMutation.mutateAsync();
+    } catch (caughtError) {
+      const message = caughtError instanceof ApiError ? caughtError.message : "资料上传失败，请稍后重试";
+      setUploadError(message);
+    }
+  }
+
+  async function handleDelete(material: Material) {
+    setDeleteError(null);
+    try {
+      await deleteMutation.mutateAsync(material.id);
+    } catch (caughtError) {
+      const message = caughtError instanceof ApiError ? caughtError.message : "资料删除失败，请稍后重试";
+      setDeleteError(message);
+    }
+  }
+
+  const materials = materialsQuery.data ?? [];
+
+  return (
+    <section className="materials-section" aria-label="课程资料">
+      <div className="materials-header">
+        <div>
+          <h4>课程资料</h4>
+          <p>支持 PDF、DOCX、PPTX、TXT、MD 和图片，单文件 100MB 内。</p>
+        </div>
+      </div>
+
+      <form className="material-upload" onSubmit={handleUpload}>
+        <label className="file-picker">
+          <UploadCloud size={18} />
+          <span>{selectedFile ? selectedFile.name : "选择资料文件"}</span>
+          <input
+            accept=".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg"
+            ref={fileInputRef}
+            type="file"
+            onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+          />
+        </label>
+        <input
+          value={title}
+          maxLength={255}
+          placeholder="资料标题（可选）"
+          onChange={(event) => setTitle(event.target.value)}
+        />
+        <select value={materialType} onChange={(event) => setMaterialType(event.target.value)}>
+          <option value="">自动识别类型</option>
+          <option value="pdf">PDF</option>
+          <option value="docx">DOCX</option>
+          <option value="pptx">PPTX</option>
+          <option value="txt">TXT</option>
+          <option value="md">Markdown</option>
+          <option value="image">图片</option>
+        </select>
+        <button className="primary-button" type="submit" disabled={uploadMutation.isPending}>
+          {uploadMutation.isPending ? "上传中" : "上传"}
+        </button>
+      </form>
+
+      {uploadMutation.isPending && (
+        <div className="upload-progress" aria-label="上传进度">
+          <span style={{ width: `${uploadProgress}%` }} />
+        </div>
+      )}
+      {uploadError && <p className="form-error">{uploadError}</p>}
+      {deleteError && <p className="form-error">{deleteError}</p>}
+
+      {materialsQuery.isLoading ? (
+        <p className="materials-hint">资料加载中</p>
+      ) : materials.length === 0 ? (
+        <p className="materials-hint">还没有资料，上传后会在这里显示解析状态。</p>
+      ) : (
+        <div className="materials-list">
+          {materials.map((material) => (
+            <article className="material-item" key={material.id}>
+              <FileText size={18} />
+              <div className="material-main">
+                <strong>{material.title}</strong>
+                <span>
+                  {material.original_filename} · {materialTypeLabels[material.material_type] ?? material.material_type} ·{" "}
+                  {formatFileSize(material.file_size)}
+                </span>
+              </div>
+              <span className={`material-status ${material.status.toLowerCase()}`}>
+                {materialStatusLabels[material.status]}
+              </span>
+              <button
+                className="icon-button danger"
+                type="button"
+                onClick={() => handleDelete(material)}
+                disabled={deleteMutation.isPending}
+                aria-label="删除资料"
+              >
+                <Trash2 size={16} />
+              </button>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

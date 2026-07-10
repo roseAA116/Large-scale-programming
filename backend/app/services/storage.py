@@ -1,6 +1,8 @@
 from minio import Minio
+from minio.error import S3Error
 
 from app.core.config import settings
+from app.core.errors import AppError
 
 
 def get_storage_client() -> Minio:
@@ -10,6 +12,60 @@ def get_storage_client() -> Minio:
         secret_key=settings.s3_secret_key,
         secure=settings.s3_secure,
     )
+
+
+def ensure_bucket(client: Minio) -> None:
+    try:
+        if not client.bucket_exists(settings.s3_bucket):
+            client.make_bucket(settings.s3_bucket)
+    except S3Error as exc:
+        raise AppError(
+            "STORAGE_BUCKET_UNAVAILABLE",
+            "对象存储 bucket 不可用",
+            status_code=503,
+            details={"bucket": settings.s3_bucket},
+        ) from exc
+
+
+def put_material_object(
+    *,
+    object_key: str,
+    file_stream,
+    file_size: int,
+    content_type: str | None,
+) -> str:
+    client = get_storage_client()
+    ensure_bucket(client)
+    try:
+        client.put_object(
+            settings.s3_bucket,
+            object_key,
+            file_stream,
+            file_size,
+            content_type=content_type or "application/octet-stream",
+        )
+    except S3Error as exc:
+        raise AppError(
+            "MATERIAL_UPLOAD_FAILED",
+            "资料上传到对象存储失败",
+            status_code=502,
+            details={"object_key": object_key},
+        ) from exc
+    return object_key
+
+
+def delete_material_object(object_key: str) -> None:
+    client = get_storage_client()
+    ensure_bucket(client)
+    try:
+        client.remove_object(settings.s3_bucket, object_key)
+    except S3Error as exc:
+        raise AppError(
+            "MATERIAL_DELETE_FAILED",
+            "资料文件删除失败",
+            status_code=502,
+            details={"object_key": object_key},
+        ) from exc
 
 
 def storage_settings_ready() -> dict:
@@ -24,4 +80,3 @@ def storage_settings_ready() -> dict:
         if not value
     ]
     return {"ok": not missing, "bucket": settings.s3_bucket, "missing": missing}
-

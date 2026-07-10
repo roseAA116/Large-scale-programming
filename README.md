@@ -56,6 +56,24 @@
 - 前端删除确认
 - 前端课程空状态展示
 
+### 阶段四：课程资料管理
+
+已完成：
+
+- `materials` 数据表和 Alembic 迁移
+- 资料状态枚举：`UPLOADED`、`PARSING`、`PARSED`、`INDEXING`、`READY`、`FAILED`
+- 课程资料上传接口
+- 文件扩展名、MIME 类型和 100MB 大小限制校验
+- MinIO/S3 对象存储上传与删除
+- 资料元数据保存
+- 上传成功后记录解析任务触发日志，供阶段五异步任务系统接入
+- 资料列表接口
+- 资料详情接口
+- 资料软删除接口
+- 前端课程页资料上传控件
+- 前端上传进度展示
+- 前端资料列表与解析状态展示
+
 ## 后端接口
 
 认证与用户：
@@ -76,6 +94,13 @@
 - `PATCH /api/v1/courses/{course_id}`
 - `DELETE /api/v1/courses/{course_id}`
 
+资料管理：
+
+- `POST /api/v1/courses/{course_id}/materials`
+- `GET /api/v1/courses/{course_id}/materials`
+- `GET /api/v1/materials/{material_id}`
+- `DELETE /api/v1/materials/{material_id}`
+
 健康检查：
 
 - `GET /api/v1/healthz`
@@ -94,8 +119,9 @@ alembic upgrade head
 
 - `202607100001_create_users.py`：创建 `users` 表
 - `202607100002_create_courses.py`：创建 `courses` 表
+- `202607100003_create_materials.py`：创建 `materials` 表
 
-说明：`courses.deleted_at` 用于软删除。课程列表、详情、编辑和删除接口只处理当前登录用户自己的未删除课程。
+说明：`courses.deleted_at` 和 `materials.deleted_at` 用于软删除。课程与资料接口只处理当前登录用户自己的未删除数据。
 
 ## Docker 快速启动
 
@@ -156,7 +182,7 @@ npm run build
 
 ## 最近验证
 
-阶段三完成后已通过：
+阶段四完成后已通过：
 
 - `python -m compileall app`
 - `python -m ruff check app tests`
