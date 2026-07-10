@@ -36,6 +36,23 @@ export type Course = {
   updated_at: string;
 };
 
+export type MaterialStatus = "UPLOADED" | "PARSING" | "PARSED" | "INDEXING" | "READY" | "FAILED";
+
+export type Material = {
+  id: string;
+  user_id: string;
+  course_id: string;
+  title: string;
+  material_type: string;
+  original_filename: string;
+  content_type: string | null;
+  file_size: number;
+  status: MaterialStatus;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type HealthData = {
   status: string;
   service: string;
@@ -150,6 +167,75 @@ export async function updateCourse(courseId: string, payload: CoursePayload): Pr
 
 export async function deleteCourse(courseId: string): Promise<void> {
   await apiFetch<{ message: string }>(`/api/v1/courses/${courseId}`, { method: "DELETE" });
+}
+
+export async function listMaterials(courseId: string): Promise<Material[]> {
+  const response = await apiFetch<Material[]>(`/api/v1/courses/${courseId}/materials`);
+  return response.data;
+}
+
+export async function getMaterial(materialId: string): Promise<Material> {
+  const response = await apiFetch<Material>(`/api/v1/materials/${materialId}`);
+  return response.data;
+}
+
+export async function deleteMaterial(materialId: string): Promise<void> {
+  await apiFetch<{ message: string }>(`/api/v1/materials/${materialId}`, { method: "DELETE" });
+}
+
+export async function uploadMaterial(
+  courseId: string,
+  payload: {
+    file: File;
+    title?: string;
+    material_type?: string;
+    onProgress?: (progress: number) => void;
+  }
+): Promise<Material> {
+  const formData = new FormData();
+  formData.append("file", payload.file);
+  if (payload.title?.trim()) {
+    formData.append("title", payload.title.trim());
+  }
+  if (payload.material_type?.trim()) {
+    formData.append("material_type", payload.material_type.trim());
+  }
+
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `/api/v1/courses/${courseId}/materials`);
+    request.setRequestHeader("Accept", "application/json");
+    if (accessToken) {
+      request.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+    }
+
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && payload.onProgress) {
+        payload.onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+
+    request.onload = () => {
+      const response = JSON.parse(request.responseText || "{}") as ApiResponse<Material>;
+      if (request.status < 200 || request.status >= 300) {
+        reject(
+          new ApiError(
+            response.error?.message ?? "资料上传失败",
+            response.error?.code ?? `HTTP_${request.status}`,
+            request.status
+          )
+        );
+        return;
+      }
+      resolve(response.data);
+    };
+
+    request.onerror = () => {
+      reject(new ApiError("网络连接失败，资料未上传", "API_NETWORK_ERROR", 0));
+    };
+
+    request.send(formData);
+  });
 }
 
 async function apiFetch<T>(
