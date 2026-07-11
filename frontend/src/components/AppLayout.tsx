@@ -1,4 +1,12 @@
-import { BookOpen, FileText, LayoutDashboard, LogOut, UserRound } from "lucide-react";
+import {
+  BookOpen,
+  CalendarDays,
+  FileText,
+  LayoutDashboard,
+  LogOut,
+  MessageSquare,
+  UserRound
+} from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { logout } from "../api/client";
@@ -44,6 +52,20 @@ export function AppLayout() {
           <NavLink className="nav-item pending" to="/">
             <FileText size={18} />
             资料
+          </NavLink>
+          <NavLink
+            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+            to="/chat"
+          >
+            <MessageSquare size={18} />
+            问答
+          </NavLink>
+          <NavLink
+            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+            to="/plans"
+          >
+            <CalendarDays size={18} />
+            计划
           </NavLink>
           <NavLink
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}

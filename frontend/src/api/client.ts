@@ -53,6 +53,129 @@ export type Material = {
   updated_at: string;
 };
 
+export type SearchMode = "keyword" | "vector" | "hybrid";
+
+export type SearchResult = {
+  chunk_id: string;
+  material_id: string;
+  material_title: string;
+  material_type: string;
+  text: string;
+  score: number;
+  keyword_score: number;
+  vector_score: number;
+  page_no: number | null;
+  slide_no: number | null;
+  section_title: string | null;
+};
+
+export type AnswerCitation = {
+  id: string;
+  answer_message_id: string;
+  material_id: string;
+  chunk_id: string;
+  material_title: string;
+  material_type: string;
+  section_title: string | null;
+  page_no: number | null;
+  slide_no: number | null;
+  quote: string;
+  score: number;
+  sort_order: number;
+  created_at: string;
+};
+
+export type ChatSession = {
+  id: string;
+  user_id: string;
+  course_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChatMessageRole = "USER" | "ASSISTANT";
+
+export type ChatMessage = {
+  id: string;
+  session_id: string;
+  user_id: string;
+  course_id: string;
+  role: ChatMessageRole;
+  content: string;
+  token_count: number;
+  created_at: string;
+  citations: AnswerCitation[];
+};
+
+export type ChatSessionDetail = {
+  session: ChatSession;
+  messages: ChatMessage[];
+};
+
+export type ChatAskPayload = {
+  course_id: string;
+  question: string;
+  session_id?: string | null;
+  material_type?: string | null;
+  search_mode?: SearchMode;
+};
+
+export type ChatAskResponse = {
+  session: ChatSession;
+  question: ChatMessage;
+  answer: ChatMessage;
+  contexts: SearchResult[];
+};
+
+export type StudyPlanStatus = "ACTIVE" | "COMPLETED" | "ARCHIVED";
+export type StudyPlanItemStatus = "TODO" | "DONE" | "SKIPPED";
+
+export type StudyPlanItem = {
+  id: string;
+  plan_id: string;
+  user_id: string;
+  course_id: string;
+  title: string;
+  description: string | null;
+  scheduled_date: string;
+  estimated_minutes: number;
+  status: StudyPlanItemStatus;
+  sort_order: number;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudyPlan = {
+  id: string;
+  user_id: string;
+  goal: string;
+  course_ids: string[];
+  deadline: string;
+  daily_minutes: number;
+  status: StudyPlanStatus;
+  risk_level: "LOW" | "MEDIUM" | "HIGH" | string;
+  risk_message: string | null;
+  created_at: string;
+  updated_at: string;
+  items: StudyPlanItem[];
+};
+
+export type StudyPlanPage = {
+  items: StudyPlan[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type StudyPlanCreatePayload = {
+  course_ids: string[];
+  goal: string;
+  deadline: string;
+  daily_minutes: number;
+};
+
 type HealthData = {
   status: string;
   service: string;
@@ -236,6 +359,82 @@ export async function uploadMaterial(
 
     request.send(formData);
   });
+}
+
+export async function searchCourseMaterials(
+  courseId: string,
+  payload: { q: string; material_type?: string; mode?: SearchMode; limit?: number }
+): Promise<SearchResult[]> {
+  const searchParams = new URLSearchParams();
+  searchParams.set("q", payload.q);
+  if (payload.material_type?.trim()) {
+    searchParams.set("material_type", payload.material_type.trim());
+  }
+  if (payload.mode) {
+    searchParams.set("mode", payload.mode);
+  }
+  if (payload.limit) {
+    searchParams.set("limit", String(payload.limit));
+  }
+  const response = await apiFetch<SearchResult[]>(
+    `/api/v1/courses/${courseId}/search?${searchParams.toString()}`
+  );
+  return response.data;
+}
+
+export async function listChatSessions(courseId?: string): Promise<ChatSession[]> {
+  const searchParams = new URLSearchParams();
+  if (courseId) {
+    searchParams.set("course_id", courseId);
+  }
+  const queryString = searchParams.toString();
+  const response = await apiFetch<ChatSession[]>(
+    `/api/v1/chat/sessions${queryString ? `?${queryString}` : ""}`
+  );
+  return response.data;
+}
+
+export async function getChatSession(sessionId: string): Promise<ChatSessionDetail> {
+  const response = await apiFetch<ChatSessionDetail>(`/api/v1/chat/sessions/${sessionId}`);
+  return response.data;
+}
+
+export async function askAgent(payload: ChatAskPayload): Promise<ChatAskResponse> {
+  const response = await apiFetch<ChatAskResponse>("/api/v1/chat/ask", {
+    body: payload,
+    method: "POST"
+  });
+  return response.data;
+}
+
+export async function createStudyPlan(payload: StudyPlanCreatePayload): Promise<StudyPlan> {
+  const response = await apiFetch<StudyPlan>("/api/v1/plans", {
+    body: payload,
+    method: "POST"
+  });
+  return response.data;
+}
+
+export async function listStudyPlans(): Promise<StudyPlanPage> {
+  const response = await apiFetch<StudyPlanPage>("/api/v1/plans");
+  return response.data;
+}
+
+export async function getStudyPlan(planId: string): Promise<StudyPlan> {
+  const response = await apiFetch<StudyPlan>(`/api/v1/plans/${planId}`);
+  return response.data;
+}
+
+export async function updateStudyPlanItem(
+  planId: string,
+  itemId: string,
+  status: StudyPlanItemStatus
+): Promise<StudyPlan> {
+  const response = await apiFetch<StudyPlan>(`/api/v1/plans/${planId}/items/${itemId}`, {
+    body: { status },
+    method: "PATCH"
+  });
+  return response.data;
 }
 
 async function apiFetch<T>(
