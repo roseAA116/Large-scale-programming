@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     embedding_dimension: int = 1536
     embedding_batch_size: int = 32
 
+    llm_api_url: str | None = None
+    llm_api_key: str | None = None
+    llm_model: str = "gpt-4o-mini"
+    llm_timeout_seconds: int = 45
+
     worker_queue_name: str = "course_agent:jobs"
     worker_retry_queue_name: str = "course_agent:jobs:retry"
     worker_max_retries: int = 3
