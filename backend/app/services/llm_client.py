@@ -1,3 +1,7 @@
+import json
+import re
+from typing import Any
+
 import httpx
 
 from app.core.config import settings
@@ -10,6 +14,40 @@ class LLMClient:
         if settings.llm_api_url and settings.llm_api_key:
             return await self._answer_remote(question=question, contexts=contexts)
         return self._answer_locally(question=question, contexts=contexts)
+
+    async def generate_study_plan(
+        self,
+        *,
+        course_names: dict[str, str],
+        ready_material_counts: dict[str, int],
+        goal: str,
+        deadline: str,
+        daily_minutes: int,
+    ) -> dict[str, Any] | None:
+        if not settings.llm_api_url or not settings.llm_api_key:
+            return None
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是课程学习计划 Agent。你只输出 JSON，不要输出 Markdown。"
+                    "计划必须可执行、日期不能晚于截止时间。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": build_study_plan_prompt(
+                    course_names=course_names,
+                    ready_material_counts=ready_material_counts,
+                    goal=goal,
+                    deadline=deadline,
+                    daily_minutes=daily_minutes,
+                ),
+            },
+        ]
+        content = await self._chat_completion(messages=messages)
+        return _extract_json_object(content)
 
     async def _answer_remote(self, *, question: str, contexts: list[SearchResultRead]) -> str:
         messages = [
@@ -25,6 +63,9 @@ class LLMClient:
                 "content": build_course_prompt(question=question, contexts=contexts),
             },
         ]
+        return await self._chat_completion(messages=messages)
+
+    async def _chat_completion(self, *, messages: list[dict[str, str]]) -> str:
         payload = {
             "model": settings.llm_model,
             "messages": messages,
@@ -96,6 +137,47 @@ def build_course_prompt(*, question: str, contexts: list[SearchResultRead]) -> s
     )
 
 
+def build_study_plan_prompt(
+    *,
+    course_names: dict[str, str],
+    ready_material_counts: dict[str, int],
+    goal: str,
+    deadline: str,
+    daily_minutes: int,
+) -> str:
+    courses = [
+        {
+            "course_id": course_id,
+            "course_name": course_name,
+            "ready_material_count": ready_material_counts.get(course_id, 0),
+        }
+        for course_id, course_name in course_names.items()
+    ]
+    return (
+        "请根据以下输入生成结构化学习计划。\n\n"
+        f"学习目标：{goal}\n"
+        f"截止时间：{deadline}\n"
+        f"每日可用学习时间：{daily_minutes} 分钟\n"
+        f"课程：{json.dumps(courses, ensure_ascii=False)}\n\n"
+        "输出必须是一个 JSON 对象，字段如下：\n"
+        "{\n"
+        '  "risk_level": "LOW|MEDIUM|HIGH",\n'
+        '  "risk_message": "可选，中文风险提示",\n'
+        '  "items": [\n'
+        "    {\n"
+        '      "course_id": "必须使用输入里的 course_id",\n'
+        '      "title": "160 字以内的任务标题",\n'
+        '      "description": "具体学习动作",\n'
+        '      "scheduled_date": "YYYY-MM-DD",\n'
+        '      "estimated_minutes": 15 到每日可用时间之间的整数\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "请覆盖每门课程，优先安排 READY 资料较多的课程复习和练习；"
+        "如果时间不足，请把 risk_level 设为 HIGH 并说明原因。"
+    )
+
+
 def _format_source(context: SearchResultRead) -> str:
     parts = [context.material_title]
     if context.section_title:
@@ -112,3 +194,31 @@ def _compact_text(text: str, max_length: int) -> str:
     if len(compacted) <= max_length:
         return compacted
     return f"{compacted[: max_length - 1]}…"
+
+
+def _extract_json_object(content: str) -> dict[str, Any]:
+    cleaned = content.strip()
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, flags=re.DOTALL)
+    if fenced:
+        cleaned = fenced.group(1)
+    elif not cleaned.startswith("{"):
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start >= 0 and end > start:
+            cleaned = cleaned[start : end + 1]
+
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        raise AppError(
+            "AGENT_LLM_INVALID_RESPONSE",
+            "LLM returned invalid JSON.",
+            status_code=502,
+        ) from exc
+    if not isinstance(payload, dict):
+        raise AppError(
+            "AGENT_LLM_INVALID_RESPONSE",
+            "LLM returned an invalid study plan.",
+            status_code=502,
+        )
+    return payload

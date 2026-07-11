@@ -20,6 +20,9 @@ from app.schemas.study_plan import (
     StudyPlanRead,
     StudyPlanUpdate,
 )
+from app.services.llm_client import LLMClient
+
+AGENT_PLAN_ITEM_LIMIT = 120
 
 
 @dataclass(frozen=True)
@@ -33,8 +36,9 @@ class GeneratedPlanItem:
 
 
 class StudyPlanService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, llm_client: LLMClient | None = None) -> None:
         self.db = db
+        self.llm_client = llm_client or LLMClient()
 
     async def create_plan(self, *, user_id: str, payload: StudyPlanCreate) -> StudyPlanRead:
         deadline = _normalize_deadline(payload.deadline)
@@ -44,7 +48,7 @@ class StudyPlanService:
             user_id=user_id,
             course_ids=list(courses.keys()),
         )
-        generated_items, risk_level, risk_message = generate_plan_items(
+        generated_items, risk_level, risk_message = await self._generate_plan_items(
             course_ids=payload.course_ids,
             course_names={course_id: course.name for course_id, course in courses.items()},
             ready_material_counts=ready_counts,
@@ -231,6 +235,47 @@ class StudyPlanService:
         data.items = [StudyPlanItemRead.model_validate(item) for item in items]
         return data
 
+    async def _generate_plan_items(
+        self,
+        *,
+        course_ids: list[str],
+        course_names: dict[str, str],
+        ready_material_counts: dict[str, int],
+        goal: str,
+        deadline: datetime,
+        daily_minutes: int,
+    ) -> tuple[list[GeneratedPlanItem], str, str | None]:
+        fallback = generate_plan_items(
+            course_ids=course_ids,
+            course_names=course_names,
+            ready_material_counts=ready_material_counts,
+            goal=goal,
+            deadline=deadline,
+            daily_minutes=daily_minutes,
+        )
+        try:
+            agent_payload = await self.llm_client.generate_study_plan(
+                course_names=course_names,
+                ready_material_counts=ready_material_counts,
+                goal=goal,
+                deadline=deadline.isoformat(),
+                daily_minutes=daily_minutes,
+            )
+        except Exception:
+            return fallback
+        if agent_payload is None:
+            return fallback
+        try:
+            return coerce_agent_plan_payload(
+                payload=agent_payload,
+                course_ids=course_ids,
+                course_names=course_names,
+                deadline=deadline,
+                daily_minutes=daily_minutes,
+            )
+        except ValueError:
+            return fallback
+
 
 def generate_plan_items(
     *,
@@ -285,6 +330,55 @@ def generate_plan_items(
     return items, "LOW", None
 
 
+def coerce_agent_plan_payload(
+    *,
+    payload: dict,
+    course_ids: list[str],
+    course_names: dict[str, str],
+    deadline: datetime,
+    daily_minutes: int,
+) -> tuple[list[GeneratedPlanItem], str, str | None]:
+    raw_items = payload.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("Agent plan must include items")
+
+    items: list[GeneratedPlanItem] = []
+    today = datetime.now(UTC).date()
+    end_date = deadline.date()
+    for index, raw_item in enumerate(raw_items[:AGENT_PLAN_ITEM_LIMIT], start=1):
+        if not isinstance(raw_item, dict):
+            raise ValueError("Agent plan item must be an object")
+        course_id = _resolve_agent_course_id(
+            raw_item,
+            course_ids=course_ids,
+            course_names=course_names,
+        )
+        title = _clean_required_string(raw_item.get("title"), max_length=160)
+        description = _clean_optional_string(raw_item.get("description"), max_length=1200)
+        scheduled_date = _parse_agent_date(raw_item.get("scheduled_date") or raw_item.get("date"))
+        if scheduled_date < today or scheduled_date > end_date:
+            raise ValueError("Agent plan item date is outside the allowed range")
+        estimated_minutes = _parse_agent_minutes(raw_item.get("estimated_minutes"), daily_minutes)
+        items.append(
+            GeneratedPlanItem(
+                course_id=course_id,
+                title=title,
+                description=description or "按计划完成本学习块，并记录疑问用于课程问答复盘。",
+                scheduled_date=scheduled_date,
+                estimated_minutes=estimated_minutes,
+                sort_order=index,
+            )
+        )
+
+    risk_level = str(payload.get("risk_level") or "LOW").upper()
+    if risk_level not in {"LOW", "MEDIUM", "HIGH"}:
+        risk_level = "MEDIUM"
+    risk_message = _clean_optional_string(payload.get("risk_message"), max_length=500)
+    if risk_level == "HIGH" and not risk_message:
+        risk_message = "Agent 判断当前目标存在时间不足风险，请适当调整学习范围或每日学习时长。"
+    return items, risk_level, risk_message
+
+
 def _study_dates_until(deadline: datetime) -> list[date]:
     today = datetime.now(UTC).date()
     end_date = deadline.date()
@@ -310,6 +404,67 @@ def _plan_description(*, material_count: int, block_index: int, blocks_per_day: 
     return (
         "先整理课程目标、教材目录和待补资料；资料 READY 后可继续用问答模块核对理解。"
     )
+
+
+def _resolve_agent_course_id(
+    raw_item: dict,
+    *,
+    course_ids: list[str],
+    course_names: dict[str, str],
+) -> str:
+    course_id = raw_item.get("course_id")
+    if isinstance(course_id, str) and course_id in course_ids:
+        return course_id
+
+    course_name = raw_item.get("course_name")
+    if isinstance(course_name, str):
+        for known_id, known_name in course_names.items():
+            if course_name.strip() == known_name:
+                return known_id
+    raise ValueError("Agent plan item references an unknown course")
+
+
+def _clean_required_string(value: object, *, max_length: int) -> str:
+    if not isinstance(value, str):
+        raise ValueError("Expected a string")
+    cleaned = " ".join(value.split())
+    if not cleaned:
+        raise ValueError("Expected a non-empty string")
+    return cleaned[:max_length]
+
+
+def _clean_optional_string(value: object, *, max_length: int) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    cleaned = " ".join(value.split())
+    if not cleaned:
+        return None
+    return cleaned[:max_length]
+
+
+def _parse_agent_date(value: object) -> date:
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str):
+        raise ValueError("Expected a scheduled date")
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError as exc:
+        raise ValueError("Expected scheduled_date in YYYY-MM-DD format") from exc
+
+
+def _parse_agent_minutes(value: object, daily_minutes: int) -> int:
+    if isinstance(value, bool):
+        raise ValueError("Expected estimated minutes")
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Expected estimated minutes") from exc
+    if minutes < 15 or minutes > daily_minutes:
+        raise ValueError("Estimated minutes out of range")
+    return minutes
 
 
 def _normalize_deadline(deadline: datetime) -> datetime:
