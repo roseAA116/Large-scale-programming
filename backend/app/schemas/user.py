@@ -56,6 +56,7 @@ class UserRead(BaseModel):
     username: str
     full_name: str | None
     is_active: bool
+    is_admin: bool
     created_at: datetime
     updated_at: datetime
 

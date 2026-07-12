@@ -15,6 +15,7 @@ export type User = {
   username: string;
   full_name: string | null;
   is_active: boolean;
+  is_admin: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -176,6 +177,163 @@ export type StudyPlanCreatePayload = {
   daily_minutes: number;
 };
 
+export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE" | "CANCELED";
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
+
+export type Task = {
+  id: string;
+  user_id: string;
+  course_id: string;
+  plan_id: string | null;
+  source_id: string | null;
+  title: string;
+  description: string | null;
+  due_date: string;
+  estimated_minutes: number;
+  priority: TaskPriority;
+  status: TaskStatus;
+  completed_at: string | null;
+  canceled_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskPage = {
+  items: Task[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type TaskCreatePayload = {
+  course_id: string;
+  title: string;
+  description?: string | null;
+  due_date: string;
+  estimated_minutes: number;
+  priority: TaskPriority;
+};
+
+export type TaskUpdatePayload = Partial<TaskCreatePayload> & {
+  status?: TaskStatus;
+};
+
+export type TaskPreviewItem = {
+  source_id: string;
+  plan_id: string;
+  course_id: string;
+  title: string;
+  description: string | null;
+  due_date: string;
+  estimated_minutes: number;
+  priority: TaskPriority;
+  risk_message: string | null;
+  already_added: boolean;
+};
+
+export type TaskPreview = {
+  items: TaskPreviewItem[];
+  risk_level: "LOW" | "MEDIUM" | "HIGH" | string;
+  risk_message: string | null;
+  total_estimated_minutes: number;
+  already_added_count: number;
+};
+
+export type KnowledgePoint = {
+  title: string;
+  detail: string;
+  source_count: number;
+};
+
+export type CourseSummary = {
+  id: string;
+  user_id: string;
+  course_id: string;
+  material_id: string | null;
+  scope: string;
+  version: number;
+  title: string;
+  outline_md: string;
+  knowledge_points: KnowledgePoint[];
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CourseSummaryPage = {
+  items: CourseSummary[];
+  total: number;
+};
+
+export type DashboardSummary = {
+  course_count: number;
+  material_count: number;
+  ready_material_count: number;
+  ready_material_ratio: number;
+  today_tasks: Array<{
+    id: string;
+    course_id: string;
+    title: string;
+    due_date: string;
+    priority: TaskPriority | string;
+    status: TaskStatus | string;
+  }>;
+  recent_chats: Array<{
+    id: string;
+    course_id: string;
+    title: string;
+    updated_at: string;
+  }>;
+  recent_plans: Array<{
+    id: string;
+    goal: string;
+    deadline: string;
+    risk_level: string;
+    status: string;
+  }>;
+};
+
+export type CoursePlanningStat = {
+  course_id: string;
+  course_name: string;
+  task_count: number;
+  total_estimated_minutes: number;
+  earliest_due_date: string | null;
+  high_priority_count: number;
+  ready_material_count: number;
+  urgency_score: number;
+  allocation_minutes: number;
+  allocation_ratio: number;
+};
+
+export type MultiCoursePlanAnalysis = {
+  course_stats: CoursePlanningStat[];
+  total_task_minutes: number;
+  available_minutes: number;
+  risk_level: string;
+  risk_message: string | null;
+  suggested_goal: string;
+};
+
+export type AdminSystemStatus = {
+  users: number;
+  courses: number;
+  materials: number;
+  failed_materials: number;
+  tasks: number;
+  plans: number;
+  generated_at: string;
+};
+
+export type AdminQueueStatus = {
+  queue_name: string;
+  retry_queue_name: string;
+  pending_count: number | null;
+  retry_count: number | null;
+  available: boolean;
+  error: string | null;
+};
+
 type HealthData = {
   status: string;
   service: string;
@@ -225,6 +383,10 @@ export function setApiAccessToken(token: string | null) {
 
 export async function getHealth(): Promise<ApiResponse<HealthData>> {
   return apiFetch<HealthData>("/api/v1/healthz", { auth: false });
+}
+
+export async function getReadyz(): Promise<ApiResponse<unknown>> {
+  return apiFetch<unknown>("/api/v1/readyz", { auth: false });
 }
 
 export async function register(payload: RegisterPayload): Promise<AuthSession> {
@@ -407,6 +569,56 @@ export async function askAgent(payload: ChatAskPayload): Promise<ChatAskResponse
   return response.data;
 }
 
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const response = await apiFetch<DashboardSummary>("/api/v1/dashboard/summary");
+  return response.data;
+}
+
+export async function listCourseSummaries(courseId?: string): Promise<CourseSummaryPage> {
+  const searchParams = new URLSearchParams();
+  if (courseId) {
+    searchParams.set("course_id", courseId);
+  }
+  const queryString = searchParams.toString();
+  const response = await apiFetch<CourseSummaryPage>(
+    `/api/v1/summaries${queryString ? `?${queryString}` : ""}`
+  );
+  return response.data;
+}
+
+export async function generateCourseSummary(
+  courseId: string,
+  materialId?: string | null
+): Promise<CourseSummary> {
+  const response = await apiFetch<CourseSummary>(`/api/v1/courses/${courseId}/summaries`, {
+    body: { material_id: materialId ?? null, regenerate: true },
+    method: "POST"
+  });
+  return response.data;
+}
+
+export async function analyzeMultiCoursePlan(payload: {
+  course_ids: string[];
+  deadline?: string | null;
+  daily_minutes: number;
+}): Promise<MultiCoursePlanAnalysis> {
+  const response = await apiFetch<MultiCoursePlanAnalysis>("/api/v1/plans/multi-course/analyze", {
+    body: payload,
+    method: "POST"
+  });
+  return response.data;
+}
+
+export async function getAdminStatus(): Promise<AdminSystemStatus> {
+  const response = await apiFetch<AdminSystemStatus>("/api/v1/admin/status");
+  return response.data;
+}
+
+export async function getAdminQueueStatus(): Promise<AdminQueueStatus> {
+  const response = await apiFetch<AdminQueueStatus>("/api/v1/admin/queues");
+  return response.data;
+}
+
 export async function createStudyPlan(payload: StudyPlanCreatePayload): Promise<StudyPlan> {
   const response = await apiFetch<StudyPlan>("/api/v1/plans", {
     body: payload,
@@ -433,6 +645,91 @@ export async function updateStudyPlanItem(
   const response = await apiFetch<StudyPlan>(`/api/v1/plans/${planId}/items/${itemId}`, {
     body: { status },
     method: "PATCH"
+  });
+  return response.data;
+}
+
+export async function previewPlanTasks(
+  planId: string,
+  planItemIds?: string[]
+): Promise<TaskPreview> {
+  const response = await apiFetch<TaskPreview>(`/api/v1/plans/${planId}/tasks/preview`, {
+    body: { plan_item_ids: planItemIds },
+    method: "POST"
+  });
+  return response.data;
+}
+
+export async function createPlanTasks(planId: string, planItemIds?: string[]): Promise<Task[]> {
+  const response = await apiFetch<Task[]>(`/api/v1/plans/${planId}/tasks`, {
+    body: { plan_item_ids: planItemIds },
+    method: "POST"
+  });
+  return response.data;
+}
+
+export async function createTask(payload: TaskCreatePayload): Promise<Task> {
+  const response = await apiFetch<Task>("/api/v1/tasks", {
+    body: payload,
+    method: "POST"
+  });
+  return response.data;
+}
+
+export async function listTasks(filters: {
+  course_id?: string;
+  status?: TaskStatus | "";
+  due_from?: string;
+  due_to?: string;
+  page?: number;
+  page_size?: number;
+} = {}): Promise<TaskPage> {
+  const searchParams = new URLSearchParams();
+  if (filters.course_id) {
+    searchParams.set("course_id", filters.course_id);
+  }
+  if (filters.status) {
+    searchParams.set("status", filters.status);
+  }
+  if (filters.due_from) {
+    searchParams.set("due_from", filters.due_from);
+  }
+  if (filters.due_to) {
+    searchParams.set("due_to", filters.due_to);
+  }
+  if (filters.page) {
+    searchParams.set("page", String(filters.page));
+  }
+  if (filters.page_size) {
+    searchParams.set("page_size", String(filters.page_size));
+  }
+  const queryString = searchParams.toString();
+  const response = await apiFetch<TaskPage>(`/api/v1/tasks${queryString ? `?${queryString}` : ""}`);
+  return response.data;
+}
+
+export async function updateTask(taskId: string, payload: TaskUpdatePayload): Promise<Task> {
+  const response = await apiFetch<Task>(`/api/v1/tasks/${taskId}`, {
+    body: payload,
+    method: "PATCH"
+  });
+  return response.data;
+}
+
+export async function completeTask(taskId: string): Promise<Task> {
+  const response = await apiFetch<Task>(`/api/v1/tasks/${taskId}/complete`, { method: "POST" });
+  return response.data;
+}
+
+export async function cancelTask(taskId: string): Promise<Task> {
+  const response = await apiFetch<Task>(`/api/v1/tasks/${taskId}/cancel`, { method: "POST" });
+  return response.data;
+}
+
+export async function postponeTask(taskId: string, dueDate: string): Promise<Task> {
+  const response = await apiFetch<Task>(`/api/v1/tasks/${taskId}/postpone`, {
+    body: { due_date: dueDate },
+    method: "POST"
   });
   return response.data;
 }

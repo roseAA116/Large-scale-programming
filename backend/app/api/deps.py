@@ -43,6 +43,11 @@ async def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
+def ensure_admin(current_user: User) -> None:
+    if not current_user.is_admin:
+        raise AppError("ADMIN_REQUIRED", "Admin permission is required.", status_code=403)
+
+
 def ensure_owner(resource_user_id: str, current_user: User) -> None:
     if resource_user_id != current_user.id:
         raise AppError("FORBIDDEN_RESOURCE", "无权访问其他用户的数据", status_code=403)

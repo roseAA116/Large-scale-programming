@@ -11,7 +11,11 @@ from app.schemas.study_plan import (
     StudyPlanPage,
     StudyPlanUpdate,
 )
+from app.schemas import MultiCoursePlanAnalyzeRequest
+from app.services.planning_service import PlanningService
+from app.schemas.task import PlanTaskSelection
 from app.services.study_plan_service import StudyPlanService
+from app.services.task_service import TaskService
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -46,6 +50,23 @@ async def list_study_plans(
     )
     payload = StudyPlanPage(items=plans, total=total, page=page, page_size=page_size)
     return ok(request, payload.model_dump(mode="json"))
+
+
+@router.post("/multi-course/analyze")
+async def analyze_multi_course_plan(
+    payload: MultiCoursePlanAnalyzeRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+    request: Request,
+):
+    service = PlanningService(db)
+    analysis = await service.analyze_multi_course_plan(
+        user_id=current_user.id,
+        course_ids=payload.course_ids,
+        deadline=payload.deadline,
+        daily_minutes=payload.daily_minutes,
+    )
+    return ok(request, analysis.model_dump(mode="json"))
 
 
 @router.get("/{plan_id}")
@@ -90,3 +111,37 @@ async def update_study_plan_item(
         status=payload.status,
     )
     return ok(request, plan.model_dump(mode="json"))
+
+
+@router.post("/{plan_id}/tasks/preview")
+async def preview_plan_tasks(
+    plan_id: str,
+    payload: PlanTaskSelection,
+    current_user: CurrentUser,
+    db: DbSession,
+    request: Request,
+):
+    service = TaskService(db)
+    preview = await service.preview_plan_tasks(
+        user_id=current_user.id,
+        plan_id=plan_id,
+        plan_item_ids=payload.plan_item_ids,
+    )
+    return ok(request, preview.model_dump(mode="json"))
+
+
+@router.post("/{plan_id}/tasks")
+async def create_plan_tasks(
+    plan_id: str,
+    payload: PlanTaskSelection,
+    current_user: CurrentUser,
+    db: DbSession,
+    request: Request,
+):
+    service = TaskService(db)
+    tasks = await service.create_plan_tasks(
+        user_id=current_user.id,
+        plan_id=plan_id,
+        plan_item_ids=payload.plan_item_ids,
+    )
+    return ok(request, [task.model_dump(mode="json") for task in tasks], status_code=201)

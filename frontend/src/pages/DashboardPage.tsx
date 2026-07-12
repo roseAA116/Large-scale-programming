@@ -1,30 +1,26 @@
-import { Activity, CheckCircle2, Database, FileText, ShieldCheck } from "lucide-react";
+import { Activity, CalendarDays, CheckCircle2, ClipboardList, Database, MessageSquare } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
-import { getHealth } from "../api/client";
+import { getDashboardSummary, getHealth } from "../api/client";
 import { useAuthStore } from "../stores/authStore";
-
-const modules = [
-  { title: "用户注册与登录", description: "邮箱、用户名、密码哈希和 JWT 登录已接入。", icon: ShieldCheck },
-  { title: "资料索引", description: "后续上传、解析、分块和向量索引会在鉴权后接入。", icon: FileText },
-  { title: "Agent 问答", description: "课程内检索、来源引用和对话记录会形成核心闭环。", icon: Activity }
-];
 
 export function DashboardPage() {
   const user = useAuthStore((state) => state.user);
-  const healthQuery = useQuery({
-    queryKey: ["health"],
-    queryFn: getHealth,
+  const healthQuery = useQuery({ queryKey: ["health"], queryFn: getHealth, retry: 1 });
+  const dashboardQuery = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: getDashboardSummary,
     retry: 1
   });
-
+  const summary = dashboardQuery.data;
   const apiOnline = healthQuery.data?.success === true;
 
   return (
     <>
       <header className="topbar">
         <div>
-          <p className="eyebrow">阶段二用户与权限</p>
+          <p className="eyebrow">个人中心与仪表盘</p>
           <h2>你好，{user?.full_name || user?.username}</h2>
         </div>
         <div className={apiOnline ? "status online" : "status offline"}>
@@ -34,49 +30,89 @@ export function DashboardPage() {
       </header>
 
       <section className="overview">
-        <div className="metric">
-          <ShieldCheck size={20} />
-          <div>
-            <strong>JWT 鉴权</strong>
-            <span>受保护接口自动携带登录凭证</span>
-          </div>
-        </div>
-        <div className="metric">
-          <Database size={20} />
-          <div>
-            <strong>用户数据隔离</strong>
-            <span>后端已提供 owner 校验入口</span>
-          </div>
-        </div>
-        <div className="metric">
-          <CheckCircle2 size={20} />
-          <div>
-            <strong>退出失效</strong>
-            <span>退出后旧 token 立即不可用</span>
-          </div>
-        </div>
+        <Metric icon={Database} label="课程" value={summary?.course_count ?? 0} />
+        <Metric icon={Activity} label="资料 READY" value={`${Math.round((summary?.ready_material_ratio ?? 0) * 100)}%`} />
+        <Metric icon={CheckCircle2} label="今日待办" value={summary?.today_tasks.length ?? 0} />
       </section>
 
-      <section className="panel">
-        <div className="panel-header">
-          <h3>后端健康检查</h3>
-          <code>/api/v1/healthz</code>
-        </div>
-        <pre>{JSON.stringify(healthQuery.data ?? { status: "waiting" }, null, 2)}</pre>
-      </section>
+      <section className="dashboard-grid">
+        <article className="panel dashboard-panel">
+          <div className="panel-header">
+            <h3>今日任务</h3>
+            <Link className="text-link" to="/tasks">查看待办</Link>
+          </div>
+          <div className="dashboard-list">
+            {(summary?.today_tasks ?? []).length === 0 ? (
+              <p className="materials-hint">今天还没有待办任务。</p>
+            ) : (
+              summary?.today_tasks.map((task) => (
+                <div className="dashboard-list-item" key={task.id}>
+                  <ClipboardList size={17} />
+                  <span>{task.title}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </article>
 
-      <section className="module-grid">
-        {modules.map((item) => {
-          const Icon = item.icon;
-          return (
-            <article className="module-card" key={item.title}>
-              <Icon size={22} />
-              <h3>{item.title}</h3>
-              <p>{item.description}</p>
-            </article>
-          );
-        })}
+        <article className="panel dashboard-panel">
+          <div className="panel-header">
+            <h3>最近对话</h3>
+            <Link className="text-link" to="/chat">继续对话</Link>
+          </div>
+          <div className="dashboard-list">
+            {(summary?.recent_chats ?? []).length === 0 ? (
+              <p className="materials-hint">还没有课程问答记录。</p>
+            ) : (
+              summary?.recent_chats.map((chat) => (
+                <div className="dashboard-list-item" key={chat.id}>
+                  <MessageSquare size={17} />
+                  <span>{chat.title}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </article>
+
+        <article className="panel dashboard-panel">
+          <div className="panel-header">
+            <h3>近期计划</h3>
+            <Link className="text-link" to="/plans">打开学习计划</Link>
+          </div>
+          <div className="dashboard-list">
+            {(summary?.recent_plans ?? []).length === 0 ? (
+              <p className="materials-hint">还没有学习计划。</p>
+            ) : (
+              summary?.recent_plans.map((plan) => (
+                <div className="dashboard-list-item" key={plan.id}>
+                  <CalendarDays size={17} />
+                  <span>{plan.goal}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </article>
       </section>
     </>
+  );
+}
+
+function Metric({
+  icon: Icon,
+  label,
+  value
+}: {
+  icon: typeof Database;
+  label: string;
+  value: number | string;
+}) {
+  return (
+    <div className="metric">
+      <Icon size={20} />
+      <div>
+        <strong>{value}</strong>
+        <span>{label}</span>
+      </div>
+    </div>
   );
 }
