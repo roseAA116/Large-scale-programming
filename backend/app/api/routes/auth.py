@@ -3,6 +3,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.config import settings
 from app.core.errors import AppError
 from app.core.responses import ok
 from app.core.security import create_access_token, hash_password, verify_password
@@ -25,6 +26,7 @@ async def register_user(payload: UserCreate, db: DbSession, request: Request):
         username=payload.username,
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
+        is_admin=payload.email in {email.lower() for email in settings.admin_emails},
     )
     db.add(user)
     try:

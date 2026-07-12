@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="change-me", min_length=8)
     access_token_expire_minutes: int = 60 * 24
     password_min_length: int = 8
+    admin_emails: list[str] = []
 
     database_url: str = "postgresql+asyncpg://course_agent:course_agent@localhost:5432/course_agent"
     redis_url: str = "redis://localhost:6379/0"

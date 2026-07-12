@@ -1,10 +1,13 @@
 import {
   BookOpen,
   CalendarDays,
+  ClipboardList,
   FileText,
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  Settings,
+  Sparkles,
   UserRound
 } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
@@ -38,42 +41,18 @@ export function AppLayout() {
         </div>
 
         <nav className="nav-list" aria-label="主导航">
-          <NavLink className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} to="/">
-            <LayoutDashboard size={18} />
-            工作台
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/courses"
-          >
-            <BookOpen size={18} />
-            课程
-          </NavLink>
-          <NavLink className="nav-item pending" to="/">
+          <NavItem to="/" icon={LayoutDashboard} label="工作台" />
+          <NavItem to="/courses" icon={BookOpen} label="课程" />
+          <NavLink className="nav-item pending" to="/courses">
             <FileText size={18} />
             资料
           </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/chat"
-          >
-            <MessageSquare size={18} />
-            问答
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/plans"
-          >
-            <CalendarDays size={18} />
-            计划
-          </NavLink>
-          <NavLink
-            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-            to="/profile"
-          >
-            <UserRound size={18} />
-            个人资料
-          </NavLink>
+          <NavItem to="/chat" icon={MessageSquare} label="问答" />
+          <NavItem to="/summaries" icon={Sparkles} label="知识点" />
+          <NavItem to="/plans" icon={CalendarDays} label="计划" />
+          <NavItem to="/tasks" icon={ClipboardList} label="待办" />
+          <NavItem to="/admin" icon={Settings} label="运维" />
+          <NavItem to="/profile" icon={UserRound} label="个人资料" />
         </nav>
 
         <div className="sidebar-footer">
@@ -91,5 +70,22 @@ export function AppLayout() {
         <Outlet />
       </section>
     </main>
+  );
+}
+
+function NavItem({
+  icon: Icon,
+  label,
+  to
+}: {
+  icon: typeof LayoutDashboard;
+  label: string;
+  to: string;
+}) {
+  return (
+    <NavLink className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} to={to}>
+      <Icon size={18} />
+      {label}
+    </NavLink>
   );
 }

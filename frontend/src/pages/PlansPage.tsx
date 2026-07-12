@@ -1,16 +1,30 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CalendarDays, CheckCircle2, Clock, ListChecks, Plus } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  ListChecks,
+  Plus
+} from "lucide-react";
 
 import {
   ApiError,
   Course,
+  MultiCoursePlanAnalysis,
   StudyPlan,
   StudyPlanItem,
   StudyPlanPage,
+  TaskPreview,
+  TaskPreviewItem,
+  analyzeMultiCoursePlan,
   createStudyPlan,
+  createPlanTasks,
   listCourses,
   listStudyPlans,
+  previewPlanTasks,
   updateStudyPlanItem
 } from "../api/client";
 
@@ -25,6 +39,7 @@ export function PlansPage() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [view, setView] = useState<PlanView>("list");
   const [formError, setFormError] = useState<string | null>(null);
+  const [multiCourseAnalysis, setMultiCourseAnalysis] = useState<MultiCoursePlanAnalysis | null>(null);
 
   const coursesQuery = useQuery({
     queryKey: ["courses", "plans"],
@@ -85,6 +100,24 @@ export function PlansPage() {
           existing.id === plan.id ? plan : existing
         )
       }));
+    }
+  });
+
+  const analysisMutation = useMutation({
+    mutationFn: () =>
+      analyzeMultiCoursePlan({
+        course_ids: selectedCourseIds,
+        deadline: new Date(deadline).toISOString(),
+        daily_minutes: dailyMinutes
+      }),
+    onSuccess: (analysis) => {
+      setMultiCourseAnalysis(analysis);
+      setFormError(null);
+    },
+    onError: (caughtError) => {
+      const message =
+        caughtError instanceof ApiError ? caughtError.message : "多课程分析失败，请稍后重试";
+      setFormError(message);
     }
   });
 
@@ -190,6 +223,15 @@ export function PlansPage() {
                 <CalendarDays size={18} />
                 生成计划
               </button>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={analysisMutation.isPending || selectedCourseIds.length === 0}
+                onClick={() => analysisMutation.mutate()}
+              >
+                分析多课程
+              </button>
+              {multiCourseAnalysis && <MultiCourseAnalysisPanel analysis={multiCourseAnalysis} />}
             </form>
           )}
         </aside>
@@ -237,6 +279,31 @@ export function PlansPage() {
   );
 }
 
+function MultiCourseAnalysisPanel({ analysis }: { analysis: MultiCoursePlanAnalysis }) {
+  return (
+    <section className="multi-analysis">
+      <div>
+        <strong>综合安排</strong>
+        <span>
+          任务估时 {analysis.total_task_minutes} 分钟 / 可用 {analysis.available_minutes} 分钟
+        </span>
+      </div>
+      {analysis.risk_message && <p>{analysis.risk_message}</p>}
+      <div className="allocation-list">
+        {analysis.course_stats.map((item) => (
+          <article key={item.course_id}>
+            <span>{item.course_name}</span>
+            <div>
+              <i style={{ width: `${Math.max(6, item.allocation_ratio * 100)}%` }} />
+            </div>
+            <em>{Math.round(item.allocation_ratio * 100)}%</em>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function PlanDetail({
   courseMap,
   isUpdating,
@@ -255,6 +322,54 @@ function PlanDetail({
   const groupedItems = groupItemsByDate(plan.items);
   const completedCount = plan.items.filter((item) => item.status === "DONE").length;
   const progress = plan.items.length === 0 ? 0 : Math.round((completedCount / plan.items.length) * 100);
+  const [taskPreview, setTaskPreview] = useState<TaskPreview | null>(null);
+  const [taskMessage, setTaskMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTaskPreview(null);
+    setTaskMessage(null);
+  }, [plan.id]);
+
+  const previewMutation = useMutation({
+    mutationFn: (planItemIds?: string[]) => previewPlanTasks(plan.id, planItemIds),
+    onSuccess: (preview) => {
+      setTaskPreview(preview);
+      setTaskMessage(null);
+    },
+    onError: (caughtError) => {
+      const message =
+        caughtError instanceof ApiError ? caughtError.message : "任务预览生成失败，请稍后重试";
+      setTaskMessage(message);
+    }
+  });
+
+  const createTasksMutation = useMutation({
+    mutationFn: () => {
+      const planItemIds = taskPreview?.items
+        .filter((item) => !item.already_added)
+        .map((item) => item.source_id);
+      return createPlanTasks(plan.id, planItemIds);
+    },
+    onSuccess: (tasks) => {
+      setTaskMessage(tasks.length > 0 ? `已加入 ${tasks.length} 个待办` : "这些任务已经在待办中");
+      setTaskPreview((current) =>
+        current
+          ? {
+              ...current,
+              already_added_count: current.items.length,
+              items: current.items.map((item) => ({ ...item, already_added: true }))
+            }
+          : current
+      );
+    },
+    onError: (caughtError) => {
+      const message =
+        caughtError instanceof ApiError ? caughtError.message : "加入待办失败，请稍后重试";
+      setTaskMessage(message);
+    }
+  });
+
+  const hasPreviewItemsToAdd = taskPreview?.items.some((item) => !item.already_added) ?? false;
 
   return (
     <section className="panel plan-detail">
@@ -266,13 +381,24 @@ function PlanDetail({
             截止 {formatDateTime(plan.deadline)} · 每日 {plan.daily_minutes} 分钟 · {progress}%
           </p>
         </div>
-        <div className="segmented" role="group" aria-label="计划视图">
-          <button className={view === "list" ? "active" : ""} type="button" onClick={() => onViewChange("list")}>
-            列表
+        <div className="plan-detail-actions">
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={previewMutation.isPending || plan.items.length === 0}
+            onClick={() => previewMutation.mutate(undefined)}
+          >
+            <ClipboardList size={17} />
+            预览任务
           </button>
-          <button className={view === "calendar" ? "active" : ""} type="button" onClick={() => onViewChange("calendar")}>
-            日历
-          </button>
+          <div className="segmented" role="group" aria-label="计划视图">
+            <button className={view === "list" ? "active" : ""} type="button" onClick={() => onViewChange("list")}>
+              列表
+            </button>
+            <button className={view === "calendar" ? "active" : ""} type="button" onClick={() => onViewChange("calendar")}>
+              日历
+            </button>
+          </div>
         </div>
       </div>
 
@@ -281,6 +407,18 @@ function PlanDetail({
           <AlertTriangle size={18} />
           <span>{plan.risk_message}</span>
         </div>
+      )}
+
+      {(taskPreview || taskMessage || previewMutation.isPending) && (
+        <TaskPreviewPanel
+          courseMap={courseMap}
+          isCreating={createTasksMutation.isPending}
+          isLoading={previewMutation.isPending}
+          message={taskMessage}
+          preview={taskPreview}
+          canCreate={hasPreviewItemsToAdd}
+          onCreate={() => createTasksMutation.mutate()}
+        />
       )}
 
       {view === "list" ? (
@@ -292,6 +430,7 @@ function PlanDetail({
               item={item}
               key={item.id}
               onToggle={() => onToggleItem(item)}
+              onPreviewTask={() => previewMutation.mutate([item.id])}
             />
           ))}
         </div>
@@ -311,6 +450,7 @@ function PlanDetail({
                   item={item}
                   key={item.id}
                   onToggle={() => onToggleItem(item)}
+                  onPreviewTask={() => previewMutation.mutate([item.id])}
                 />
               ))}
             </section>
@@ -326,12 +466,14 @@ function PlanItemRow({
   courseName,
   disabled,
   item,
+  onPreviewTask,
   onToggle
 }: {
   compact?: boolean;
   courseName: string;
   disabled: boolean;
   item: StudyPlanItem;
+  onPreviewTask: () => void;
   onToggle: () => void;
 }) {
   const done = item.status === "DONE";
@@ -346,6 +488,89 @@ function PlanItemRow({
         <span>
           {courseName} · {formatDate(item.scheduled_date)}
         </span>
+      </div>
+      <button
+        className="icon-button light"
+        type="button"
+        title="从此计划项生成任务"
+        onClick={onPreviewTask}
+      >
+        <ClipboardList size={17} />
+      </button>
+      <time>
+        <Clock size={15} />
+        {item.estimated_minutes} 分钟
+      </time>
+    </article>
+  );
+}
+
+function TaskPreviewPanel({
+  canCreate,
+  courseMap,
+  isCreating,
+  isLoading,
+  message,
+  preview,
+  onCreate
+}: {
+  canCreate: boolean;
+  courseMap: Map<string, Course>;
+  isCreating: boolean;
+  isLoading: boolean;
+  message: string | null;
+  preview: TaskPreview | null;
+  onCreate: () => void;
+}) {
+  return (
+    <section className="task-preview">
+      <header>
+        <div>
+          <p className="eyebrow">任务预览</p>
+          <h4>{isLoading ? "正在生成待办" : `${preview?.items.length ?? 0} 个待办任务`}</h4>
+        </div>
+        <button
+          className="primary-button"
+          type="button"
+          disabled={isLoading || isCreating || !canCreate}
+          onClick={onCreate}
+        >
+          <ClipboardList size={17} />
+          加入待办
+        </button>
+      </header>
+      {preview?.risk_message && (
+        <div className={`plan-risk ${preview.risk_level.toLowerCase()}`}>
+          <AlertTriangle size={18} />
+          <span>{preview.risk_message}</span>
+        </div>
+      )}
+      {message && <p className="task-message">{message}</p>}
+      {preview && (
+        <div className="task-preview-list">
+          {preview.items.map((item) => (
+            <TaskPreviewRow
+              courseName={courseMap.get(item.course_id)?.name ?? "课程"}
+              item={item}
+              key={item.source_id}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TaskPreviewRow({ courseName, item }: { courseName: string; item: TaskPreviewItem }) {
+  return (
+    <article className={`task-preview-item ${item.already_added ? "added" : ""}`}>
+      <div>
+        <strong>{item.title}</strong>
+        <p>{item.description}</p>
+        <span>
+          {courseName} · {formatDate(item.due_date)} · {priorityLabel(item.priority)}
+        </span>
+        {item.risk_message && <em>{item.risk_message}</em>}
       </div>
       <time>
         <Clock size={15} />
@@ -395,4 +620,13 @@ function formatDateTime(value: string) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function priorityLabel(priority: TaskPreviewItem["priority"]) {
+  const labels: Record<TaskPreviewItem["priority"], string> = {
+    LOW: "低优先级",
+    MEDIUM: "中优先级",
+    HIGH: "高优先级"
+  };
+  return labels[priority] ?? priority;
 }
